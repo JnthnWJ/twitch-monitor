@@ -85,7 +85,10 @@ async def test_twitch_api(config: dict) -> bool:
         )
         
         # Test by getting a popular streamer's info
-        users = await client.get_users(login=['ninja'])
+        users = []
+        async for user in client.get_users(logins=['ninja']):
+            users.append(user)
+
         if users:
             print("✅ Twitch API connection successful")
             await client.close()
@@ -151,7 +154,10 @@ async def test_streamer_lookup(config: dict) -> bool:
         )
         
         # Look up all configured streamers
-        users = await client.get_users(login=streamers)
+        users = []
+        async for user in client.get_users(logins=streamers):
+            users.append(user)
+
         found_users = {user.login.lower() for user in users}
         
         success = True

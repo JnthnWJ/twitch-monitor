@@ -329,7 +329,11 @@ class TwitchMonitor:
     async def _get_user_ids(self, usernames: List[str]) -> Dict[str, str]:
         """Get user IDs for the given usernames."""
         try:
-            users = await self.twitch_client.get_users(logins=usernames)
+            # get_users returns an async generator, so we need to collect all results
+            users = []
+            async for user in self.twitch_client.get_users(logins=usernames):
+                users.append(user)
+
             user_map = {user.login.lower(): user.id for user in users}
 
             # Check for missing users
@@ -346,7 +350,10 @@ class TwitchMonitor:
     async def _check_streams(self, user_ids: List[str]) -> Dict[str, Optional[Dict]]:
         """Check stream status for the given user IDs."""
         try:
-            streams = await self.twitch_client.get_streams(user_id=user_ids)
+            # get_streams returns an async generator, so we need to collect all results
+            streams = []
+            async for stream in self.twitch_client.get_streams(user_id=user_ids):
+                streams.append(stream)
 
             # Create a map of user_id -> stream_data
             stream_map = {}
