@@ -329,7 +329,7 @@ class TwitchMonitor:
     async def _get_user_ids(self, usernames: List[str]) -> Dict[str, str]:
         """Get user IDs for the given usernames."""
         try:
-            users = await self.twitch_client.get_users(login=usernames)
+            users = await self.twitch_client.get_users(logins=usernames)
             user_map = {user.login.lower(): user.id for user in users}
 
             # Check for missing users
@@ -434,8 +434,12 @@ class TwitchMonitor:
                     await self._monitor_cycle()
                     retry_count = 0  # Reset retry count on successful cycle
 
-                    # Wait for next cycle
-                    await asyncio.sleep(self.poll_interval)
+                    # Wait for next cycle with cancellation support
+                    try:
+                        await asyncio.sleep(self.poll_interval)
+                    except asyncio.CancelledError:
+                        logging.info("Sleep interrupted, shutting down...")
+                        break
 
                 except Exception as e:
                     retry_count += 1
@@ -445,10 +449,14 @@ class TwitchMonitor:
                         logging.error("Max retries reached, stopping monitor")
                         break
 
-                    # Exponential backoff
+                    # Exponential backoff with cancellation support
                     delay = min(self.retry_delay * (2 ** (retry_count - 1)), 300)
                     logging.info(f"Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
+                    try:
+                        await asyncio.sleep(delay)
+                    except asyncio.CancelledError:
+                        logging.info("Retry sleep interrupted, shutting down...")
+                        break
 
         finally:
             if self.twitch_client:
@@ -484,13 +492,16 @@ def setup_logging(log_level: str = 'INFO', log_file: Optional[Path] = None):
         logging.getLogger().addHandler(file_handler)
 
 
-def signal_handler(monitor: TwitchMonitor):
+def signal_handler(monitor: TwitchMonitor, task: asyncio.Task):
     """Handle shutdown signals gracefully."""
     import signal
 
     def handler(signum, _):
         logging.info(f"Received signal {signum}, shutting down gracefully...")
         monitor.stop()
+        # Cancel the main task to interrupt any sleep operations
+        if not task.done():
+            task.cancel()
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
@@ -547,15 +558,24 @@ Examples:
         # Create and run monitor
         monitor = TwitchMonitor(args.config)
 
-        # Setup signal handlers for graceful shutdown
-        signal_handler(monitor)
+        # Get the current event loop
+        loop = asyncio.get_running_loop()
 
-        # Run the monitor
-        await monitor.run()
+        # Create a task for the monitor
+        monitor_task = loop.create_task(monitor.run())
+
+        # Setup signal handlers for graceful shutdown
+        signal_handler(monitor, monitor_task)
+
+        # Wait for the monitor task to complete
+        await monitor_task
 
     except TwitchMonitorError as e:
         logging.error(f"Configuration error: {e}")
         sys.exit(1)
+    except asyncio.CancelledError:
+        logging.info("Monitor cancelled, shutting down gracefully")
+        sys.exit(0)
     except KeyboardInterrupt:
         logging.info("Interrupted by user")
         sys.exit(0)
