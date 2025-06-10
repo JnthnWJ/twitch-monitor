@@ -121,22 +121,33 @@ install_pip() {
     fi
 }
 
-# Create installation directory
-echo -e "${BLUE}Creating installation directory...${NC}"
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
+# Determine source and target directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURRENT_DIR="$(pwd)"
 
-# Copy files to installation directory
-echo -e "${BLUE}Copying application files...${NC}"
-if [ -f "$(dirname "$0")/twitch_monitor.py" ]; then
-    cp "$(dirname "$0")/twitch_monitor.py" "$INSTALL_DIR/"
-    cp "$(dirname "$0")/requirements.txt" "$INSTALL_DIR/"
-    cp "$(dirname "$0")/config.yaml" "$INSTALL_DIR/config.yaml.example"
-    echo -e "${GREEN}✓ Files copied successfully${NC}"
+# Check if we're already in the target directory
+if [ "$SCRIPT_DIR" = "$INSTALL_DIR" ] || [ "$CURRENT_DIR" = "$INSTALL_DIR" ]; then
+    echo -e "${BLUE}Running from target directory, files are already in place...${NC}"
+    echo -e "${GREEN}✓ Files are already in the correct location${NC}"
 else
-    echo -e "${RED}✗ Source files not found. Make sure you're running this from the project directory.${NC}"
-    exit 1
+    # Create installation directory and copy files
+    echo -e "${BLUE}Creating installation directory...${NC}"
+    mkdir -p "$INSTALL_DIR"
+
+    echo -e "${BLUE}Copying application files...${NC}"
+    if [ -f "$SCRIPT_DIR/twitch_monitor.py" ]; then
+        cp "$SCRIPT_DIR/twitch_monitor.py" "$INSTALL_DIR/"
+        cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
+        cp "$SCRIPT_DIR/config.yaml" "$INSTALL_DIR/config.yaml.example"
+        echo -e "${GREEN}✓ Files copied successfully${NC}"
+    else
+        echo -e "${RED}✗ Source files not found. Make sure you're running this from the project directory.${NC}"
+        exit 1
+    fi
 fi
+
+# Change to installation directory for remaining operations
+cd "$INSTALL_DIR"
 
 # Call the pip installation function
 install_pip
@@ -170,9 +181,9 @@ echo ""
 
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     echo -e "${BLUE}Installing systemd service...${NC}"
-    if [ -f "$(dirname "$0")/twitch-monitor.service" ]; then
+    if [ -f "$SCRIPT_DIR/twitch-monitor.service" ]; then
         # Update service file with correct paths and user
-        sed "s|/home/pi/twitch-monitor|$INSTALL_DIR|g" "$(dirname "$0")/twitch-monitor.service" > "/tmp/$SERVICE_NAME.service"
+        sed "s|/home/pi/twitch-monitor|$INSTALL_DIR|g" "$SCRIPT_DIR/twitch-monitor.service" > "/tmp/$SERVICE_NAME.service"
         sed -i "s|User=pi|User=$CURRENT_USER|g" "/tmp/$SERVICE_NAME.service"
         sed -i "s|Group=pi|Group=$CURRENT_USER|g" "/tmp/$SERVICE_NAME.service"
 
