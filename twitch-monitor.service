@@ -22,12 +22,17 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/home/pi/twitch-monitor /var/log
 
-# Resource limits (adjust as needed for your Raspberry Pi)
+# Resource limits (adjust as needed for your system)
+# For Raspberry Pi, use conservative limits:
 MemoryMax=128M
 CPUQuota=50%
 
-# Environment variables (optional)
-# Environment=PYTHONUNBUFFERED=1
+# For more powerful servers, you can increase these:
+# MemoryMax=256M
+# CPUQuota=100%
+
+# Environment variables
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

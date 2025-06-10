@@ -1,6 +1,6 @@
 #!/bin/bash
 # Twitch Stream Monitor Installation Script
-# Optimized for Raspberry Pi deployment
+# Supports Raspberry Pi OS, Oracle Linux, Fedora, and other Linux distributions
 
 set -e
 
@@ -11,18 +11,63 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Detect OS and package manager
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$NAME
+        VER=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+        OS=$(lsb_release -si)
+        VER=$(lsb_release -sr)
+    elif [ -f /etc/redhat-release ]; then
+        OS="Red Hat Enterprise Linux"
+        VER=$(cat /etc/redhat-release | sed 's/.*release //' | sed 's/ .*//')
+    else
+        OS=$(uname -s)
+        VER=$(uname -r)
+    fi
+
+    # Detect package manager
+    if command -v dnf &> /dev/null; then
+        PKG_MANAGER="dnf"
+        PKG_INSTALL="sudo dnf install -y"
+        PKG_UPDATE="sudo dnf update -y"
+    elif command -v yum &> /dev/null; then
+        PKG_MANAGER="yum"
+        PKG_INSTALL="sudo yum install -y"
+        PKG_UPDATE="sudo yum update -y"
+    elif command -v apt &> /dev/null; then
+        PKG_MANAGER="apt"
+        PKG_INSTALL="sudo apt install -y"
+        PKG_UPDATE="sudo apt update"
+    elif command -v pacman &> /dev/null; then
+        PKG_MANAGER="pacman"
+        PKG_INSTALL="sudo pacman -S --noconfirm"
+        PKG_UPDATE="sudo pacman -Sy"
+    else
+        PKG_MANAGER="unknown"
+    fi
+}
+
 # Configuration
-INSTALL_DIR="/home/pi/twitch-monitor"
+detect_os
+CURRENT_USER=$(whoami)
+INSTALL_DIR="/home/$CURRENT_USER/twitch-monitor"
 SERVICE_NAME="twitch-monitor"
 LOG_FILE="/var/log/twitch-monitor.log"
 
 echo -e "${BLUE}Twitch Stream Monitor Installation${NC}"
 echo "=================================="
+echo -e "${BLUE}Detected OS: ${NC}$OS $VER"
+echo -e "${BLUE}Package Manager: ${NC}$PKG_MANAGER"
+echo -e "${BLUE}Install Directory: ${NC}$INSTALL_DIR"
+echo ""
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
    echo -e "${RED}Error: This script should not be run as root${NC}"
-   echo "Please run as the pi user or your regular user account"
+   echo "Please run as your regular user account"
    exit 1
 fi
 
@@ -38,15 +83,43 @@ else
     exit 1
 fi
 
-# Check if pip is installed
-echo -e "${BLUE}Checking pip installation...${NC}"
-if command -v pip3 &> /dev/null; then
-    echo -e "${GREEN}✓ pip3 is available${NC}"
-else
+# Install pip based on package manager
+install_pip() {
+    echo -e "${BLUE}Checking pip installation...${NC}"
+    if command -v pip3 &> /dev/null; then
+        echo -e "${GREEN}✓ pip3 is available${NC}"
+        return 0
+    fi
+
     echo -e "${YELLOW}Installing pip3...${NC}"
-    sudo apt update
-    sudo apt install -y python3-pip
-fi
+    case $PKG_MANAGER in
+        "dnf"|"yum")
+            $PKG_UPDATE
+            $PKG_INSTALL python3-pip
+            ;;
+        "apt")
+            $PKG_UPDATE
+            $PKG_INSTALL python3-pip
+            ;;
+        "pacman")
+            $PKG_UPDATE
+            $PKG_INSTALL python-pip
+            ;;
+        *)
+            echo -e "${RED}✗ Unknown package manager. Please install pip3 manually.${NC}"
+            echo "Try: curl https://bootstrap.pypa.io/get-pip.py | python3"
+            exit 1
+            ;;
+    esac
+
+    # Verify installation
+    if command -v pip3 &> /dev/null; then
+        echo -e "${GREEN}✓ pip3 installed successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to install pip3${NC}"
+        exit 1
+    fi
+}
 
 # Create installation directory
 echo -e "${BLUE}Creating installation directory...${NC}"
@@ -65,6 +138,9 @@ else
     exit 1
 fi
 
+# Call the pip installation function
+install_pip
+
 # Install Python dependencies
 echo -e "${BLUE}Installing Python dependencies...${NC}"
 pip3 install --user -r requirements.txt
@@ -82,25 +158,64 @@ else
     echo -e "${GREEN}✓ Configuration file already exists${NC}"
 fi
 
-# Install systemd service
-echo -e "${BLUE}Installing systemd service...${NC}"
-if [ -f "$(dirname "$0")/twitch-monitor.service" ]; then
-    # Update service file with correct paths
-    sed "s|/home/pi/twitch-monitor|$INSTALL_DIR|g" "$(dirname "$0")/twitch-monitor.service" > "/tmp/$SERVICE_NAME.service"
-    sed -i "s|User=pi|User=$USER|g" "/tmp/$SERVICE_NAME.service"
-    sed -i "s|Group=pi|Group=$USER|g" "/tmp/$SERVICE_NAME.service"
-    
-    sudo cp "/tmp/$SERVICE_NAME.service" "/etc/systemd/system/"
-    sudo systemctl daemon-reload
-    echo -e "${GREEN}✓ Systemd service installed${NC}"
+# Ask user about systemd service installation
+echo ""
+echo -e "${BLUE}Systemd Service Setup${NC}"
+echo "====================="
+echo "Would you like to install the systemd service for automatic startup?"
+echo "This will allow the monitor to start automatically on boot and restart if it crashes."
+echo ""
+read -p "Install systemd service? (Y/n): " -n 1 -r
+echo ""
+
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    echo -e "${BLUE}Installing systemd service...${NC}"
+    if [ -f "$(dirname "$0")/twitch-monitor.service" ]; then
+        # Update service file with correct paths and user
+        sed "s|/home/pi/twitch-monitor|$INSTALL_DIR|g" "$(dirname "$0")/twitch-monitor.service" > "/tmp/$SERVICE_NAME.service"
+        sed -i "s|User=pi|User=$CURRENT_USER|g" "/tmp/$SERVICE_NAME.service"
+        sed -i "s|Group=pi|Group=$CURRENT_USER|g" "/tmp/$SERVICE_NAME.service"
+
+        # Update log file path to be user-writable if not root
+        if [[ $CURRENT_USER != "root" ]]; then
+            USER_LOG_FILE="$INSTALL_DIR/twitch-monitor.log"
+            sed -i "s|/var/log/twitch-monitor.log|$USER_LOG_FILE|g" "/tmp/$SERVICE_NAME.service"
+            LOG_FILE="$USER_LOG_FILE"
+        fi
+
+        sudo cp "/tmp/$SERVICE_NAME.service" "/etc/systemd/system/"
+        sudo systemctl daemon-reload
+        echo -e "${GREEN}✓ Systemd service installed${NC}"
+
+        # Ask if user wants to enable the service
+        echo ""
+        read -p "Enable service to start on boot? (Y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            sudo systemctl enable "$SERVICE_NAME"
+            echo -e "${GREEN}✓ Service enabled for auto-start${NC}"
+        fi
+
+        SYSTEMD_INSTALLED=true
+    else
+        echo -e "${YELLOW}⚠ Service file not found, skipping systemd installation${NC}"
+        SYSTEMD_INSTALLED=false
+    fi
 else
-    echo -e "${YELLOW}⚠ Service file not found, skipping systemd installation${NC}"
+    echo -e "${YELLOW}⚠ Skipping systemd service installation${NC}"
+    SYSTEMD_INSTALLED=false
 fi
 
 # Create log file with proper permissions
 echo -e "${BLUE}Setting up logging...${NC}"
-sudo touch "$LOG_FILE"
-sudo chown "$USER:$USER" "$LOG_FILE"
+if [[ "$LOG_FILE" == "/var/log/"* ]]; then
+    # System log location - requires sudo
+    sudo touch "$LOG_FILE"
+    sudo chown "$CURRENT_USER:$CURRENT_USER" "$LOG_FILE"
+else
+    # User log location - no sudo needed
+    touch "$LOG_FILE"
+fi
 echo -e "${GREEN}✓ Log file created: $LOG_FILE${NC}"
 
 # Test the installation
@@ -134,12 +249,41 @@ echo ""
 echo "5. Test the monitor:"
 echo "   cd $INSTALL_DIR && python3 twitch_monitor.py"
 echo ""
-echo "6. Enable and start the service:"
-echo "   sudo systemctl enable $SERVICE_NAME"
-echo "   sudo systemctl start $SERVICE_NAME"
+
+if [ "$SYSTEMD_INSTALLED" = true ]; then
+    echo "6. Start the service:"
+    echo "   sudo systemctl start $SERVICE_NAME"
+    echo ""
+    echo "7. Check service status:"
+    echo "   sudo systemctl status $SERVICE_NAME"
+    echo "   sudo journalctl -u $SERVICE_NAME -f"
+    echo ""
+    echo "8. View logs:"
+    echo "   tail -f $LOG_FILE"
+else
+    echo "6. To run manually:"
+    echo "   cd $INSTALL_DIR"
+    echo "   python3 twitch_monitor.py"
+    echo ""
+    echo "7. To run in background:"
+    echo "   cd $INSTALL_DIR"
+    echo "   nohup python3 twitch_monitor.py --log-file twitch-monitor.log > /dev/null 2>&1 &"
+    echo ""
+    echo "8. View logs:"
+    echo "   tail -f $INSTALL_DIR/twitch-monitor.log"
+fi
+
 echo ""
-echo "7. Check service status:"
-echo "   sudo systemctl status $SERVICE_NAME"
-echo "   sudo journalctl -u $SERVICE_NAME -f"
+echo -e "${BLUE}OS-specific notes:${NC}"
+case $PKG_MANAGER in
+    "dnf"|"yum")
+        echo "- On Oracle Linux/RHEL/Fedora, you may need to configure SELinux if enabled"
+        echo "- Check firewall settings if using a custom ntfy server"
+        ;;
+    "apt")
+        echo "- On Debian/Ubuntu systems, everything should work out of the box"
+        ;;
+esac
+
 echo ""
 echo -e "${BLUE}For more information, see the README.md file${NC}"

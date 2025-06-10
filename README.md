@@ -1,6 +1,6 @@
 # Twitch Stream Monitor
 
-A reliable, lightweight Python script that monitors Twitch streams and sends push notifications via ntfy.sh when streamers go live. Optimized for Raspberry Pi deployment with low resource usage and robust error handling.
+A reliable, lightweight Python script that monitors Twitch streams and sends push notifications via ntfy.sh when streamers go live. Supports multiple Linux distributions including Raspberry Pi OS, Oracle Linux, Fedora, Ubuntu, and Debian with low resource usage and robust error handling.
 
 ## Features
 
@@ -9,14 +9,21 @@ A reliable, lightweight Python script that monitors Twitch streams and sends pus
 - 🚫 **Smart deduplication** - only one notification per stream session
 - 🔄 **Automatic recovery** from network issues and API rate limits
 - ⚙️ **Easy configuration** via YAML file
-- 🍓 **Raspberry Pi optimized** with low resource usage
-- 🔧 **Systemd service** for auto-start and restart
+- 🐧 **Multi-OS support** - Raspberry Pi, Oracle Linux, Fedora, Ubuntu, Debian
+- 🔧 **Optional systemd service** for auto-start and restart
 - 📝 **Comprehensive logging** with configurable levels
 - 🛡️ **Robust error handling** with exponential backoff
 
 ## Quick Start
 
 ### 1. Installation
+
+The installation script supports multiple Linux distributions:
+- **Raspberry Pi OS** (Debian-based)
+- **Oracle Linux** / **RHEL** (dnf/yum)
+- **Fedora** (dnf)
+- **Ubuntu** / **Debian** (apt)
+- **Arch Linux** (pacman)
 
 ```bash
 # Clone or download the project files
@@ -27,6 +34,12 @@ cd twitch-monitor
 chmod +x install.sh
 ./install.sh
 ```
+
+The installer will:
+- Detect your OS and package manager automatically
+- Install Python dependencies
+- Set up the application in your home directory
+- Optionally configure systemd service (you can choose to skip this)
 
 ### 2. Get Twitch API Credentials
 
@@ -70,16 +83,24 @@ streamers:
 ### 5. Test the Monitor
 
 ```bash
-cd /home/pi/twitch-monitor
+cd ~/twitch-monitor  # or your installation directory
 python3 twitch_monitor.py
 ```
 
-### 6. Enable as a Service
+### 6. Enable as a Service (if installed)
+
+If you chose to install the systemd service during installation:
 
 ```bash
-sudo systemctl enable twitch-monitor
 sudo systemctl start twitch-monitor
 sudo systemctl status twitch-monitor
+```
+
+If you skipped systemd installation, you can run manually:
+
+```bash
+cd ~/twitch-monitor
+nohup python3 twitch_monitor.py --log-file twitch-monitor.log > /dev/null 2>&1 &
 ```
 
 ## Configuration
@@ -207,6 +228,46 @@ sudo systemctl status twitch-monitor
 # View resource usage
 top -p $(pgrep -f twitch_monitor.py)
 ```
+
+## OS-Specific Notes
+
+### Oracle Linux / RHEL / Fedora
+
+The installer automatically detects and uses `dnf` (or `yum` on older systems). Additional considerations:
+
+**SELinux**: If SELinux is enabled and you encounter permission issues:
+```bash
+# Check SELinux status
+sestatus
+
+# If needed, set SELinux to permissive mode temporarily
+sudo setenforce 0
+
+# Or create a custom SELinux policy (advanced)
+```
+
+**Firewall**: If using a custom ntfy server, ensure firewall allows outbound HTTPS:
+```bash
+# Check firewall status
+sudo firewall-cmd --state
+
+# Allow HTTPS if needed
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+**Python Path**: On some Oracle Linux systems, you might need to use `python3.9` or `python3.11` instead of `python3`.
+
+### Raspberry Pi OS
+
+- Uses `apt` package manager
+- Optimized resource limits in systemd service
+- Works out of the box with default settings
+
+### Ubuntu / Debian
+
+- Uses `apt` package manager
+- Standard installation, no special considerations
 
 ## Troubleshooting
 
