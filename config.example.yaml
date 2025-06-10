@@ -1,0 +1,75 @@
+# Example Twitch Stream Monitor Configuration
+# Copy this to config.yaml and customize for your setup
+
+# Twitch API Configuration
+# Get your credentials from https://dev.twitch.tv/console/apps
+twitch:
+  client_id: "your_twitch_client_id_here"
+  client_secret: "your_twitch_client_secret_here"
+
+# ntfy.sh Notification Configuration
+ntfy:
+  # Choose a unique topic name - this is essentially your "password"
+  # Make it hard to guess to prevent spam
+  topic: "myname_twitch_alerts_xyz123"
+  
+  # ntfy.sh server (use default or your own self-hosted instance)
+  server: "https://ntfy.sh"
+  
+  # Notification priority: min, low, default, high, max (or 1-5)
+  priority: "high"
+  
+  # Tags for categorization and emojis
+  tags: "twitch,live,gaming,red_circle"
+  
+  # Include clickable link to stream
+  click_url: true
+  
+  # Optional: Custom notification icon
+  # icon: "https://static-cdn.jtvnw.net/jtv_user_pictures/twitch-profile_image-8a8c5be2e3b64a9a-300x300.png"
+  
+  # Request timeout in seconds
+  timeout: 10
+
+# List of Twitch usernames to monitor (case-insensitive)
+streamers:
+  - "ninja"           # Popular streamers for testing
+  - "pokimane"
+  - "shroud"
+  - "your_favorite_streamer"  # Replace with actual streamers you want to monitor
+
+# Monitoring Configuration
+poll_interval: 120      # Check every 2 minutes (120 seconds)
+max_retries: 3          # Retry failed API calls up to 3 times
+retry_delay: 60         # Wait 60 seconds between retries
+state_file: "stream_state.json"  # File to store stream states
+
+# Notification Message Template
+# Available variables: {username}, {title}, {game}, {url}, {started_at}
+message_template: |
+  🔴 {username} just went live!
+  
+  📺 {title}
+  🎮 Playing: {game}
+  🕐 Started: {started_at}
+  
+  Watch now: {url}
+
+# Alternative message templates you can use:
+
+# Simple template:
+# message_template: "{username} is now live playing {game}! {url}"
+
+# Detailed template:
+# message_template: |
+#   🎮 STREAM ALERT 🎮
+#   
+#   Streamer: {username}
+#   Game: {game}
+#   Title: {title}
+#   Started: {started_at}
+#   
+#   Click to watch: {url}
+
+# Minimal template:
+# message_template: "{username} is live! {url}"

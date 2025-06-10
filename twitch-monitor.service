@@ -1,0 +1,33 @@
+[Unit]
+Description=Twitch Stream Monitor
+Documentation=https://github.com/your-username/twitch-monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/twitch-monitor
+ExecStart=/usr/bin/python3 /home/pi/twitch-monitor/twitch_monitor.py --log-file /var/log/twitch-monitor.log
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/twitch-monitor /var/log
+
+# Resource limits (adjust as needed for your Raspberry Pi)
+MemoryMax=128M
+CPUQuota=50%
+
+# Environment variables (optional)
+# Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

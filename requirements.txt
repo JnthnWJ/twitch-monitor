@@ -1,0 +1,14 @@
+# Twitch Stream Monitor Dependencies
+# Install with: pip install -r requirements.txt
+
+# Twitch API client with built-in rate limiting and async support
+twitchAPI>=4.0.0
+
+# HTTP requests library for ntfy.sh notifications
+requests>=2.28.0
+
+# YAML configuration file support
+PyYAML>=6.0
+
+# Optional: For better async performance (automatically used if available)
+aiohttp>=3.8.0
