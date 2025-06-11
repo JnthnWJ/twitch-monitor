@@ -499,19 +499,41 @@ def setup_logging(log_level: str = 'INFO', log_file: Optional[Path] = None):
         logging.getLogger().addHandler(file_handler)
 
 
-def signal_handler(monitor: TwitchMonitor, task: asyncio.Task):
-    """Handle shutdown signals gracefully."""
+async def setup_signal_handlers(monitor: TwitchMonitor, task: asyncio.Task):
+    """Setup signal handlers for graceful shutdown using asyncio."""
     import signal
+    import sys
 
-    def handler(signum, _):
+    def signal_handler(signum):
         logging.info(f"Received signal {signum}, shutting down gracefully...")
         monitor.stop()
         # Cancel the main task to interrupt any sleep operations
         if not task.done():
             task.cancel()
 
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGTERM, handler)
+    # Use asyncio's signal handling which works better on all platforms
+    loop = asyncio.get_running_loop()
+
+    try:
+        # Only set up signal handlers on Unix-like systems
+        if hasattr(signal, 'SIGINT') and sys.platform != 'win32':
+            loop.add_signal_handler(signal.SIGINT, lambda: signal_handler(signal.SIGINT))
+            logging.debug("SIGINT handler registered")
+        if hasattr(signal, 'SIGTERM') and sys.platform != 'win32':
+            loop.add_signal_handler(signal.SIGTERM, lambda: signal_handler(signal.SIGTERM))
+            logging.debug("SIGTERM handler registered")
+    except NotImplementedError:
+        # Fallback to traditional signal handling if asyncio signal handling is not supported
+        logging.warning("asyncio signal handling not supported, using traditional signal handling")
+
+        def fallback_handler(signum, _):
+            logging.info(f"Received signal {signum}, shutting down gracefully...")
+            monitor.stop()
+            if not task.done():
+                task.cancel()
+
+        signal.signal(signal.SIGINT, fallback_handler)
+        signal.signal(signal.SIGTERM, fallback_handler)
 
 
 async def main():
@@ -572,7 +594,7 @@ Examples:
         monitor_task = loop.create_task(monitor.run())
 
         # Setup signal handlers for graceful shutdown
-        signal_handler(monitor, monitor_task)
+        await setup_signal_handlers(monitor, monitor_task)
 
         # Wait for the monitor task to complete
         await monitor_task
